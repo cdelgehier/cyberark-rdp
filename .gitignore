@@ -1,0 +1,21 @@
+# Rust build artifacts
+/target
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+
+# Backups
+*.bak
+*.tmp

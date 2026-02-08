@@ -1,0 +1,91 @@
+---
+name: Bump Version
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  bump-version:
+    name: Bump version and update changelog
+    runs-on: ubuntu-latest
+
+    if: "!startsWith(github.event.head_commit.message, 'bump')"
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: false
+
+      - name: Install Commitizen
+        run: uv tool install commitizen
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Extract changelog for annotation
+        id: changelog
+        run: |
+          CHANGELOG=$(uvx --from commitizen cz changelog --dry-run --incremental 2>/dev/null || echo "No changelog available")
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Bump version
+        id: bump
+        run: |
+          BUMP_OUTPUT=$(uvx --from commitizen cz -nr 21 bump --yes --annotated-tag --changelog 2>&1 || true)
+          echo "$BUMP_OUTPUT"
+
+          if echo "$BUMP_OUTPUT" | grep -q "\[NO_COMMITS_TO_BUMP\]"; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "No version bump needed"
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+            NEW_VERSION=$(uvx --from commitizen cz version --project)
+            echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+            echo "Version bumped to $NEW_VERSION"
+          fi
+
+      - name: Update annotated tag with changelog
+        if: steps.bump.outputs.skip == 'false'
+        run: |
+          LATEST_TAG=$(git describe --tags --abbrev=0)
+
+          git tag -d "$LATEST_TAG"
+          git tag -a "$LATEST_TAG" -m "${{ steps.changelog.outputs.changelog }}"
+
+      - name: Push changes and tags
+        if: steps.bump.outputs.skip == 'false'
+        run: |
+          git push origin main
+          git push origin --tags --force
+
+      - name: Summary
+        run: |
+          if [ "${{ steps.bump.outputs.skip }}" == "true" ]; then
+            echo "✅ No version bump needed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "✅ Version bumped to ${{ steps.bump.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+            echo "📝 Changelog updated" >> $GITHUB_STEP_SUMMARY
+            echo "🏷️ Tag created: v${{ steps.bump.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          fi
+...

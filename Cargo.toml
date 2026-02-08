@@ -1,0 +1,66 @@
+[package]
+name = "cyberark-rdp"
+version = "0.1.0"
+edition = "2024"
+authors = ["Cédric Delgehier <cdelgehier@users.noreply.github.com>"]
+description = "Native macOS RDP client for CyberArk Privilege Cloud"
+license = "MIT"
+repository = "https://github.com/cdelgehier/cyberark-rdp"
+
+[dependencies]
+# IronRDP core
+ironrdp = { version = "0.14", features = ["connector", "session", "graphics"] }
+ironrdp-blocking = "0.8"
+ironrdp-connector = "0.8"
+ironrdp-graphics = "0.7"
+ironrdp-pdu = "0.7"
+ironrdp-tls = { version = "0.2", features = ["rustls"] }
+x509-cert = "0.2"
+bytes = "1"
+
+# Window & rendering
+winit = "0.30"
+softbuffer = "0.4"
+
+# TLS
+rustls = { version = "0.23", features = ["ring"] }
+rustls-native-certs = "0.8"
+
+# Config
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9"
+directories = "5"
+
+# Password prompt
+rfd = "0.15"
+rpassword = "5"
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# Error handling & logging
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Gateway
+uuid = { version = "1", features = ["v4"] }
+tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }
+
+[package.metadata.bundle]
+name = "CyberArk RDP"
+identifier = "com.cdelgehier.cyberark-rdp"
+icon = ["icon.png"]
+version = "0.1.0"
+copyright = "Copyright 2026 Cédric Delgehier"
+category = "Utility"
+short_description = "Native macOS RDP client for CyberArk"
+long_description = "Native macOS RDP client for CyberArk Privilege Cloud. No XQuartz, no FreeRDP — pure Rust."
+osx_minimum_system_version = "13.0"
+osx_info_plist_exts = ["Info.plist.ext"]
+
+[dev-dependencies]
+tempfile = "3"
+
+[patch.crates-io]
+ironrdp-connector = { path = "vendor/ironrdp-connector" }
