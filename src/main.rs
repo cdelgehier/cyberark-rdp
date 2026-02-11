@@ -2,6 +2,7 @@ mod config;
 mod connection;
 mod rdp_parser;
 mod sia;
+mod ui;
 mod window;
 
 use anyhow::{Context, Result, bail};
@@ -37,29 +38,6 @@ struct Cli {
     /// Print parsed RDP file and exit (debug)
     #[arg(long)]
     dump_rdp: bool,
-}
-
-fn prompt_password(username: &str) -> Result<String> {
-    // Try native dialog first (works great on macOS)
-    let _ = rfd::MessageDialog::new()
-        .set_title("CyberArk RDP - Password")
-        .set_description(format!(
-            "Enter the RDP password found on CyberArk to log in as user {}.",
-            username
-        ))
-        .set_level(rfd::MessageLevel::Info)
-        .show();
-
-    // rfd doesn't have a password input dialog, fall back to terminal
-    // On macOS we could use osascript, or just use rpassword for terminal input
-    eprint!("Password for {}: ", username);
-    let password = rpassword::read_password().context("failed to read password")?;
-
-    if password.is_empty() {
-        bail!("empty password");
-    }
-
-    Ok(password)
 }
 
 fn main() -> Result<()> {
@@ -103,10 +81,21 @@ fn main() -> Result<()> {
         bail!("no username found in .rdp file and --username not provided");
     };
 
-    // Get password
+    // Get password - either from CLI, dialog, or keychain
     let password = match cli.password {
         Some(p) => p,
-        None => prompt_password(&username)?,
+        None => {
+            // Show config dialog
+            let conn_config = ui::show_config_dialog(&cli.rdp_file, None)?;
+
+            match conn_config {
+                Some(cfg) => cfg.password,
+                None => {
+                    tracing::info!("User cancelled connection");
+                    return Ok(());
+                }
+            }
+        }
     };
 
     tracing::info!(

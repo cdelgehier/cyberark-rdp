@@ -26,6 +26,11 @@ struct RdpApp {
     // Mouse state
     mouse_x: u16,
     mouse_y: u16,
+
+    // Performance metrics
+    frame_count: u64,
+    last_fps_update: std::time::Instant,
+    fps: f64,
 }
 
 #[allow(dead_code)]
@@ -45,6 +50,9 @@ impl RdpApp {
             update_rx,
             mouse_x: 0,
             mouse_y: 0,
+            frame_count: 0,
+            last_fps_update: std::time::Instant::now(),
+            fps: 0.0,
         }
     }
 
@@ -359,6 +367,20 @@ impl ApplicationHandler for RdpApp {
                     );
                 }
                 self.render();
+
+                // Update FPS counter
+                self.frame_count += 1;
+                let elapsed = self.last_fps_update.elapsed();
+                if elapsed.as_secs_f64() >= 1.0 {
+                    self.fps = self.frame_count as f64 / elapsed.as_secs_f64();
+                    self.frame_count = 0;
+                    self.last_fps_update = std::time::Instant::now();
+
+                    // Update window title with FPS
+                    if let Some(window) = &self.window {
+                        window.set_title(&format!("CyberArk RDP - {:.1} FPS", self.fps));
+                    }
+                }
             }
 
             WindowEvent::KeyboardInput { event, .. } => {
