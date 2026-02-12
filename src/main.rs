@@ -82,16 +82,39 @@ fn main() -> Result<()> {
     };
 
     // Get password and config - either from CLI or dialog
-    let (password, burn_after_reading) = match cli.password {
-        Some(p) => (p, false), // CLI password = no burn
+    let (password, _clipboard, _map_drives, burn_after_reading) = match cli.password {
+        Some(p) => {
+            // CLI password: load preferences from config
+            let config = config::Config::load().unwrap_or_default();
+            (
+                p,
+                config.preferences.clipboard,
+                config.preferences.map_drives,
+                false,
+            )
+        }
         None => {
             // Show config dialog
             let conn_config = ui::show_config_dialog(&cli.rdp_file, None)?;
 
             match conn_config {
                 Some(cfg) => {
-                    let burn = cfg.burn_after_reading;
-                    (cfg.password, burn)
+                    // Save user preferences
+                    let mut config = config::Config::load().unwrap_or_default();
+                    config.preferences.clipboard = cfg.clipboard;
+                    config.preferences.map_drives = cfg.map_drives;
+                    config.preferences.burn_after_reading = cfg.burn_after_reading;
+
+                    if let Err(e) = config.save() {
+                        tracing::warn!("Failed to save config: {}", e);
+                    }
+
+                    (
+                        cfg.password,
+                        cfg.clipboard,
+                        cfg.map_drives,
+                        cfg.burn_after_reading,
+                    )
                 }
                 None => {
                     tracing::info!("User cancelled connection");

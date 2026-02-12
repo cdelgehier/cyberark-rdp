@@ -1,6 +1,8 @@
 use anyhow::Result;
 use std::path::Path;
 
+use crate::config::Config;
+
 /// Configuration options for RDP connection
 #[derive(Debug, Clone, Default)]
 #[allow(dead_code)] // Fields will be used when features are implemented
@@ -68,7 +70,7 @@ mod macos {
     }
 
     /// Helper: Create a checkbox at given position
-    unsafe fn create_checkbox(x: f64, y: f64, width: f64, title: &str) -> id {
+    unsafe fn create_checkbox(x: f64, y: f64, width: f64, title: &str, checked: bool) -> id {
         let ns_button = class!(NSButton);
         let checkbox: id = unsafe { msg_send![ns_button, alloc] };
         let frame = NSRect::new(NSPoint::new(x, y), NSSize::new(width, 20.0));
@@ -77,7 +79,8 @@ mod macos {
         unsafe {
             let _: () = msg_send![checkbox, setButtonType: BUTTON_TYPE_SWITCH];
             let _: () = msg_send![checkbox, setTitle: ns_string(title)];
-            let _: () = msg_send![checkbox, setState: STATE_OFF];
+            let state = if checked { STATE_ON } else { STATE_OFF };
+            let _: () = msg_send![checkbox, setState: state];
         }
 
         checkbox
@@ -232,7 +235,10 @@ mod macos {
     }
 
     /// Create the container view with all controls
-    unsafe fn create_controls_view(cached_password: Option<&str>) -> (id, id, id, id, id, id) {
+    unsafe fn create_controls_view(
+        cached_password: Option<&str>,
+        preferences: &crate::config::Preferences,
+    ) -> (id, id, id, id, id, id) {
         unsafe {
             // Create container view
             let ns_view = class!(NSView);
@@ -240,15 +246,21 @@ mod macos {
             let frame = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(VIEW_WIDTH, VIEW_HEIGHT));
             let view: id = msg_send![view, initWithFrame: frame];
 
-            // Create all controls (from top to bottom)
+            // Create all controls (from top to bottom) with saved preferences
             let clipboard_cb = create_checkbox(
                 MARGIN_LEFT,
                 190.0,
                 CONTROL_WIDTH,
                 "Enable clipboard redirection",
+                preferences.clipboard,
             );
-            let mapdrives_cb =
-                create_checkbox(MARGIN_LEFT, 160.0, CONTROL_WIDTH, "Map local drives");
+            let mapdrives_cb = create_checkbox(
+                MARGIN_LEFT,
+                160.0,
+                CONTROL_WIDTH,
+                "Map local drives",
+                preferences.map_drives,
+            );
 
             let pwd_label = create_label(MARGIN_LEFT, 130.0, 100.0, 20.0, "Password:");
             let pwd_field =
@@ -266,12 +278,14 @@ mod macos {
                 45.0,
                 CONTROL_WIDTH,
                 "Store password in keychain (12h)",
+                false, // Always false by default (not saved)
             );
             let burn_cb = create_checkbox(
                 MARGIN_LEFT,
                 15.0,
                 CONTROL_WIDTH,
                 "Delete .rdp file after connection",
+                preferences.burn_after_reading,
             );
 
             // Add all controls to view
@@ -297,6 +311,9 @@ mod macos {
         rdp_file: &Path,
         cached_password: Option<&str>,
     ) -> Result<Option<ConnectionConfig>> {
+        // Load config to get user preferences
+        let config = Config::load().unwrap_or_default();
+
         unsafe {
             // Step 1: Activate the application
             activate_application();
@@ -312,7 +329,7 @@ mod macos {
 
             // Step 4: Create all controls
             let (view, clipboard_cb, mapdrives_cb, pwd_field, store_cb, burn_cb) =
-                create_controls_view(cached_password);
+                create_controls_view(cached_password, &config.preferences);
 
             // Step 5: Add controls to alert
             let _: () = msg_send![alert, setAccessoryView: view];
