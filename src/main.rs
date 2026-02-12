@@ -81,15 +81,18 @@ fn main() -> Result<()> {
         bail!("no username found in .rdp file and --username not provided");
     };
 
-    // Get password - either from CLI, dialog, or keychain
-    let password = match cli.password {
-        Some(p) => p,
+    // Get password and config - either from CLI or dialog
+    let (password, burn_after_reading) = match cli.password {
+        Some(p) => (p, false), // CLI password = no burn
         None => {
             // Show config dialog
             let conn_config = ui::show_config_dialog(&cli.rdp_file, None)?;
 
             match conn_config {
-                Some(cfg) => cfg.password,
+                Some(cfg) => {
+                    let burn = cfg.burn_after_reading;
+                    (cfg.password, burn)
+                }
                 None => {
                     tracing::info!("User cancelled connection");
                     return Ok(());
@@ -149,6 +152,19 @@ fn main() -> Result<()> {
     // Wait for RDP thread to finish
     if let Err(e) = rdp_thread.join() {
         tracing::error!("Failed to join RDP thread: {:?}", e);
+    }
+
+    // Burn after reading: delete .rdp file if requested
+    if burn_after_reading {
+        match std::fs::remove_file(&cli.rdp_file) {
+            Ok(_) => {
+                tracing::info!("🔥 Deleted .rdp file: {}", cli.rdp_file.display());
+                println!("🔥 RDP file deleted (burn after reading)");
+            }
+            Err(e) => {
+                tracing::warn!("Failed to delete .rdp file: {}", e);
+            }
+        }
     }
 
     window_result

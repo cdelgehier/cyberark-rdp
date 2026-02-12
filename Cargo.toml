@@ -7,6 +7,9 @@ description = "Native macOS RDP client for CyberArk Privilege Cloud"
 license = "MIT"
 repository = "https://github.com/cdelgehier/cyberark-rdp"
 
+[lints.rust]
+unexpected_cfgs = "allow" # objc macros use cfg(cargo-clippy)
+
 [dependencies]
 # IronRDP core
 ironrdp = { version = "0.14", features = ["connector", "session", "graphics"] }

@@ -40,8 +40,9 @@ pub fn show_config_dialog(
 // ============================================================================
 
 #[cfg(target_os = "macos")]
-#[allow(deprecated)] // cocoa crate is deprecated but still functional
 mod macos {
+    #![allow(deprecated)] // cocoa crate is deprecated but still functional
+
     use super::*;
     use cocoa::appkit::NSApplicationActivationPolicy;
     use cocoa::base::{NO, YES, id, nil};
@@ -63,19 +64,21 @@ mod macos {
 
     /// Helper: Create an NSString from Rust string
     unsafe fn ns_string(s: &str) -> id {
-        NSString::alloc(nil).init_str(s)
+        unsafe { NSString::alloc(nil).init_str(s) }
     }
 
     /// Helper: Create a checkbox at given position
     unsafe fn create_checkbox(x: f64, y: f64, width: f64, title: &str) -> id {
         let ns_button = class!(NSButton);
-        let checkbox: id = msg_send![ns_button, alloc];
+        let checkbox: id = unsafe { msg_send![ns_button, alloc] };
         let frame = NSRect::new(NSPoint::new(x, y), NSSize::new(width, 20.0));
-        let checkbox: id = msg_send![checkbox, initWithFrame: frame];
+        let checkbox: id = unsafe { msg_send![checkbox, initWithFrame: frame] };
 
-        let _: () = msg_send![checkbox, setButtonType: BUTTON_TYPE_SWITCH];
-        let _: () = msg_send![checkbox, setTitle: ns_string(title)];
-        let _: () = msg_send![checkbox, setState: STATE_OFF];
+        unsafe {
+            let _: () = msg_send![checkbox, setButtonType: BUTTON_TYPE_SWITCH];
+            let _: () = msg_send![checkbox, setTitle: ns_string(title)];
+            let _: () = msg_send![checkbox, setState: STATE_OFF];
+        }
 
         checkbox
     }
@@ -83,28 +86,38 @@ mod macos {
     /// Helper: Create a non-editable label at given position
     unsafe fn create_label(x: f64, y: f64, width: f64, height: f64, text: &str) -> id {
         let ns_textfield = class!(NSTextField);
-        let label: id = msg_send![ns_textfield, alloc];
+        let label: id = unsafe { msg_send![ns_textfield, alloc] };
         let frame = NSRect::new(NSPoint::new(x, y), NSSize::new(width, height));
-        let label: id = msg_send![label, initWithFrame: frame];
+        let label: id = unsafe { msg_send![label, initWithFrame: frame] };
 
-        let _: () = msg_send![label, setStringValue: ns_string(text)];
-        let _: () = msg_send![label, setBezeled: NO];
-        let _: () = msg_send![label, setDrawsBackground: NO];
-        let _: () = msg_send![label, setEditable: NO];
-        let _: () = msg_send![label, setSelectable: NO];
+        unsafe {
+            let _: () = msg_send![label, setStringValue: ns_string(text)];
+            let _: () = msg_send![label, setBezeled: NO];
+            let _: () = msg_send![label, setDrawsBackground: NO];
+            let _: () = msg_send![label, setEditable: NO];
+            let _: () = msg_send![label, setSelectable: NO];
+        }
 
         label
     }
 
     /// Helper: Create a secure password field at given position
     unsafe fn create_password_field(x: f64, y: f64, width: f64, default_value: Option<&str>) -> id {
+        // Use NSSecureTextField to mask password (shows bullets)
+        // Paste works thanks to the Edit menu created in activate_application()
         let ns_secure = class!(NSSecureTextField);
-        let field: id = msg_send![ns_secure, alloc];
+        let field: id = unsafe { msg_send![ns_secure, alloc] };
         let frame = NSRect::new(NSPoint::new(x, y), NSSize::new(width, 24.0));
-        let field: id = msg_send![field, initWithFrame: frame];
+        let field: id = unsafe { msg_send![field, initWithFrame: frame] };
 
-        if let Some(value) = default_value {
-            let _: () = msg_send![field, setStringValue: ns_string(value)];
+        unsafe {
+            // Add placeholder text
+            let placeholder = ns_string("Enter password or paste (Cmd+V)");
+            let _: () = msg_send![field, setPlaceholderString: placeholder];
+
+            if let Some(value) = default_value {
+                let _: () = msg_send![field, setStringValue: ns_string(value)];
+            }
         }
 
         field
@@ -112,112 +125,172 @@ mod macos {
 
     /// Helper: Get checkbox state (true if checked)
     unsafe fn get_checkbox_state(checkbox: id) -> bool {
-        let state: isize = msg_send![checkbox, state];
+        let state: isize = unsafe { msg_send![checkbox, state] };
         state == STATE_ON
     }
 
     /// Helper: Get text from a text field
     unsafe fn get_text_field_value(field: id) -> String {
-        let nsstring: id = msg_send![field, stringValue];
-        let cstr: *const i8 = msg_send![nsstring, UTF8String];
+        unsafe {
+            let nsstring: id = msg_send![field, stringValue];
+            let cstr: *const i8 = msg_send![nsstring, UTF8String];
 
-        if cstr.is_null() {
-            String::new()
-        } else {
-            std::ffi::CStr::from_ptr(cstr).to_string_lossy().to_string()
+            if cstr.is_null() {
+                String::new()
+            } else {
+                std::ffi::CStr::from_ptr(cstr).to_string_lossy().to_string()
+            }
         }
     }
 
     /// Activate the macOS app so it can receive keyboard focus
     unsafe fn activate_application() {
-        let ns_app = class!(NSApplication);
-        let app: id = msg_send![ns_app, sharedApplication];
+        unsafe {
+            let ns_app = class!(NSApplication);
+            let app: id = msg_send![ns_app, sharedApplication];
 
-        // Set activation policy to Regular (needed for CLI apps to receive focus)
-        let _: () = msg_send![
-            app,
-            setActivationPolicy: NSApplicationActivationPolicy::NSApplicationActivationPolicyRegular
-        ];
+            // Set activation policy to Regular (needed for CLI apps to receive focus)
+            let _: () = msg_send![
+                app,
+                setActivationPolicy: NSApplicationActivationPolicy::NSApplicationActivationPolicyRegular
+            ];
 
-        // Bring app to front
-        let _: () = msg_send![app, activateIgnoringOtherApps: YES];
+            // Create a minimal Edit menu to enable Cmd+V paste
+            create_edit_menu(app);
+
+            // Bring app to front
+            let _: () = msg_send![app, activateIgnoringOtherApps: YES];
+        }
+    }
+
+    /// Create a minimal Edit menu to enable standard shortcuts (Cmd+V, etc.)
+    unsafe fn create_edit_menu(app: id) {
+        unsafe {
+            let main_menu: id = msg_send![class!(NSMenu), alloc];
+            let main_menu: id = msg_send![main_menu, init];
+
+            // Create Edit menu
+            let edit_menu: id = msg_send![class!(NSMenu), alloc];
+            let edit_menu: id = msg_send![edit_menu, initWithTitle: ns_string("Edit")];
+
+            // Add Paste item (Cmd+V)
+            let paste_title = ns_string("Paste");
+            let paste_action = sel!(paste:);
+            let paste_key = ns_string("v");
+            let _paste_item: id = msg_send![edit_menu, addItemWithTitle:paste_title action:paste_action keyEquivalent:paste_key];
+
+            // Add Copy item (Cmd+C)
+            let copy_title = ns_string("Copy");
+            let copy_action = sel!(copy:);
+            let copy_key = ns_string("c");
+            let _copy_item: id = msg_send![edit_menu, addItemWithTitle:copy_title action:copy_action keyEquivalent:copy_key];
+
+            // Add Cut item (Cmd+X)
+            let cut_title = ns_string("Cut");
+            let cut_action = sel!(cut:);
+            let cut_key = ns_string("x");
+            let _cut_item: id = msg_send![edit_menu, addItemWithTitle:cut_title action:cut_action keyEquivalent:cut_key];
+
+            // Add Select All item (Cmd+A)
+            let select_title = ns_string("Select All");
+            let select_action = sel!(selectAll:);
+            let select_key = ns_string("a");
+            let _select_item: id = msg_send![edit_menu, addItemWithTitle:select_title action:select_action keyEquivalent:select_key];
+
+            // Create Edit menu item and add submenu
+            let edit_item: id = msg_send![class!(NSMenuItem), alloc];
+            let edit_item: id = msg_send![edit_item, init];
+            let _: () = msg_send![edit_item, setSubmenu: edit_menu];
+
+            // Add to main menu
+            let _: () = msg_send![main_menu, addItem: edit_item];
+
+            // Set as app menu
+            let _: () = msg_send![app, setMainMenu: main_menu];
+        }
     }
 
     /// Create and configure the NSAlert dialog
     unsafe fn create_alert(rdp_name: &str) -> id {
-        let ns_alert = class!(NSAlert);
-        let alert: id = msg_send![ns_alert, alloc];
-        let alert: id = msg_send![alert, init];
+        unsafe {
+            let ns_alert = class!(NSAlert);
+            let alert: id = msg_send![ns_alert, alloc];
+            let alert: id = msg_send![alert, init];
 
-        // Set title and message
-        let _: () = msg_send![alert, setMessageText: ns_string("CyberArk RDP - Configuration")];
-        let info = format!("Configure connection: {}", rdp_name);
-        let _: () = msg_send![alert, setInformativeText: ns_string(&info)];
-        let _: () = msg_send![alert, setAlertStyle: ALERT_STYLE_INFO];
+            // Set title and message
+            let _: () = msg_send![alert, setMessageText: ns_string("CyberArk RDP - Configuration")];
+            let info = format!("Configure connection: {}", rdp_name);
+            let _: () = msg_send![alert, setInformativeText: ns_string(&info)];
+            let _: () = msg_send![alert, setAlertStyle: ALERT_STYLE_INFO];
 
-        // Add buttons
-        let _: id = msg_send![alert, addButtonWithTitle: ns_string("Connect")];
-        let _: id = msg_send![alert, addButtonWithTitle: ns_string("Cancel")];
+            // Add buttons
+            let _: id = msg_send![alert, addButtonWithTitle: ns_string("Connect")];
+            let _: id = msg_send![alert, addButtonWithTitle: ns_string("Cancel")];
 
-        alert
+            alert
+        }
     }
 
     /// Create the container view with all controls
     unsafe fn create_controls_view(cached_password: Option<&str>) -> (id, id, id, id, id, id) {
-        // Create container view
-        let ns_view = class!(NSView);
-        let view: id = msg_send![ns_view, alloc];
-        let frame = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(VIEW_WIDTH, VIEW_HEIGHT));
-        let view: id = msg_send![view, initWithFrame: frame];
+        unsafe {
+            // Create container view
+            let ns_view = class!(NSView);
+            let view: id = msg_send![ns_view, alloc];
+            let frame = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(VIEW_WIDTH, VIEW_HEIGHT));
+            let view: id = msg_send![view, initWithFrame: frame];
 
-        // Create all controls (from top to bottom)
-        let clipboard_cb = create_checkbox(
-            MARGIN_LEFT,
-            190.0,
-            CONTROL_WIDTH,
-            "Enable clipboard redirection",
-        );
-        let mapdrives_cb = create_checkbox(MARGIN_LEFT, 160.0, CONTROL_WIDTH, "Map local drives");
+            // Create all controls (from top to bottom)
+            let clipboard_cb = create_checkbox(
+                MARGIN_LEFT,
+                190.0,
+                CONTROL_WIDTH,
+                "Enable clipboard redirection",
+            );
+            let mapdrives_cb =
+                create_checkbox(MARGIN_LEFT, 160.0, CONTROL_WIDTH, "Map local drives");
 
-        let pwd_label = create_label(MARGIN_LEFT, 130.0, 100.0, 20.0, "Password:");
-        let pwd_field = create_password_field(MARGIN_LEFT, 100.0, CONTROL_WIDTH, cached_password);
+            let pwd_label = create_label(MARGIN_LEFT, 130.0, 100.0, 20.0, "Password:");
+            let pwd_field =
+                create_password_field(MARGIN_LEFT, 100.0, CONTROL_WIDTH, cached_password);
 
-        // Show cache hint if password is cached
-        if cached_password.is_some() {
-            let cache_label =
-                create_label(MARGIN_LEFT, 75.0, CONTROL_WIDTH, 16.0, "(cached password)");
-            let _: () = msg_send![view, addSubview: cache_label];
+            // Show cache hint if password is cached
+            if cached_password.is_some() {
+                let cache_label =
+                    create_label(MARGIN_LEFT, 75.0, CONTROL_WIDTH, 16.0, "(cached password)");
+                let _: () = msg_send![view, addSubview: cache_label];
+            }
+
+            let store_cb = create_checkbox(
+                MARGIN_LEFT,
+                45.0,
+                CONTROL_WIDTH,
+                "Store password in keychain (12h)",
+            );
+            let burn_cb = create_checkbox(
+                MARGIN_LEFT,
+                15.0,
+                CONTROL_WIDTH,
+                "Delete .rdp file after connection",
+            );
+
+            // Add all controls to view
+            let _: () = msg_send![view, addSubview: clipboard_cb];
+            let _: () = msg_send![view, addSubview: mapdrives_cb];
+            let _: () = msg_send![view, addSubview: pwd_label];
+            let _: () = msg_send![view, addSubview: pwd_field];
+            let _: () = msg_send![view, addSubview: store_cb];
+            let _: () = msg_send![view, addSubview: burn_cb];
+
+            (
+                view,
+                clipboard_cb,
+                mapdrives_cb,
+                pwd_field,
+                store_cb,
+                burn_cb,
+            )
         }
-
-        let store_cb = create_checkbox(
-            MARGIN_LEFT,
-            45.0,
-            CONTROL_WIDTH,
-            "Store password in keychain (12h)",
-        );
-        let burn_cb = create_checkbox(
-            MARGIN_LEFT,
-            15.0,
-            CONTROL_WIDTH,
-            "Delete .rdp file after connection",
-        );
-
-        // Add all controls to view
-        let _: () = msg_send![view, addSubview: clipboard_cb];
-        let _: () = msg_send![view, addSubview: mapdrives_cb];
-        let _: () = msg_send![view, addSubview: pwd_label];
-        let _: () = msg_send![view, addSubview: pwd_field];
-        let _: () = msg_send![view, addSubview: store_cb];
-        let _: () = msg_send![view, addSubview: burn_cb];
-
-        (
-            view,
-            clipboard_cb,
-            mapdrives_cb,
-            pwd_field,
-            store_cb,
-            burn_cb,
-        )
     }
 
     pub(super) fn show_dialog(
