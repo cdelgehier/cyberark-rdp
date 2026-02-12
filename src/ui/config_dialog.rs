@@ -7,6 +7,7 @@ use crate::config::Config;
 #[derive(Debug, Clone, Default)]
 #[allow(dead_code)] // Fields will be used when features are implemented
 pub struct ConnectionConfig {
+    pub resolution: String,
     pub clipboard: bool,
     pub map_drives: bool,
     pub password: String,
@@ -60,7 +61,7 @@ mod macos {
 
     // Dialog dimensions
     const VIEW_WIDTH: f64 = 400.0;
-    const VIEW_HEIGHT: f64 = 220.0;
+    const VIEW_HEIGHT: f64 = 280.0;
     const MARGIN_LEFT: f64 = 20.0;
     const CONTROL_WIDTH: f64 = 360.0;
 
@@ -124,6 +125,51 @@ mod macos {
         }
 
         field
+    }
+
+    /// Helper: Create a resolution dropdown at given position
+    unsafe fn create_resolution_dropdown(
+        x: f64,
+        y: f64,
+        width: f64,
+        selected_resolution: &str,
+    ) -> id {
+        let ns_popup = class!(NSPopUpButton);
+        let popup: id = unsafe { msg_send![ns_popup, alloc] };
+        let frame = NSRect::new(NSPoint::new(x, y), NSSize::new(width, 26.0));
+        let popup: id = unsafe { msg_send![popup, initWithFrame:frame pullsDown:NO] };
+
+        unsafe {
+            // Add all resolutions to the dropdown
+            for resolution in crate::config::RESOLUTIONS {
+                let _: () = msg_send![popup, addItemWithTitle: ns_string(resolution)];
+            }
+
+            // Select the current resolution
+            let index = crate::config::RESOLUTIONS
+                .iter()
+                .position(|&r| r == selected_resolution)
+                .unwrap_or(4); // Default to 1440x900 if not found
+
+            let _: () = msg_send![popup, selectItemAtIndex: index as isize];
+        }
+
+        popup
+    }
+
+    /// Helper: Get selected value from dropdown
+    unsafe fn get_dropdown_selected_value(popup: id) -> String {
+        unsafe {
+            let selected_item: id = msg_send![popup, selectedItem];
+            let title: id = msg_send![selected_item, title];
+            let cstr: *const i8 = msg_send![title, UTF8String];
+
+            if cstr.is_null() {
+                String::from("1920x1080")
+            } else {
+                std::ffi::CStr::from_ptr(cstr).to_string_lossy().to_string()
+            }
+        }
     }
 
     /// Helper: Get checkbox state (true if checked)
@@ -238,7 +284,7 @@ mod macos {
     unsafe fn create_controls_view(
         cached_password: Option<&str>,
         preferences: &crate::config::Preferences,
-    ) -> (id, id, id, id, id, id) {
+    ) -> (id, id, id, id, id, id, id) {
         unsafe {
             // Create container view
             let ns_view = class!(NSView);
@@ -247,48 +293,59 @@ mod macos {
             let view: id = msg_send![view, initWithFrame: frame];
 
             // Create all controls (from top to bottom) with saved preferences
+            // Resolution dropdown
+            let res_label = create_label(MARGIN_LEFT, 250.0, 100.0, 20.0, "Resolution:");
+            let res_dropdown = create_resolution_dropdown(
+                MARGIN_LEFT,
+                220.0,
+                CONTROL_WIDTH,
+                &preferences.resolution,
+            );
+
             let clipboard_cb = create_checkbox(
                 MARGIN_LEFT,
-                190.0,
+                185.0,
                 CONTROL_WIDTH,
                 "Enable clipboard redirection",
                 preferences.clipboard,
             );
             let mapdrives_cb = create_checkbox(
                 MARGIN_LEFT,
-                160.0,
+                155.0,
                 CONTROL_WIDTH,
                 "Map local drives",
                 preferences.map_drives,
             );
 
-            let pwd_label = create_label(MARGIN_LEFT, 130.0, 100.0, 20.0, "Password:");
+            let pwd_label = create_label(MARGIN_LEFT, 125.0, 100.0, 20.0, "Password:");
             let pwd_field =
-                create_password_field(MARGIN_LEFT, 100.0, CONTROL_WIDTH, cached_password);
+                create_password_field(MARGIN_LEFT, 95.0, CONTROL_WIDTH, cached_password);
 
             // Show cache hint if password is cached
             if cached_password.is_some() {
                 let cache_label =
-                    create_label(MARGIN_LEFT, 75.0, CONTROL_WIDTH, 16.0, "(cached password)");
+                    create_label(MARGIN_LEFT, 70.0, CONTROL_WIDTH, 16.0, "(cached password)");
                 let _: () = msg_send![view, addSubview: cache_label];
             }
 
             let store_cb = create_checkbox(
                 MARGIN_LEFT,
-                45.0,
+                40.0,
                 CONTROL_WIDTH,
                 "Store password in keychain (12h)",
                 false, // Always false by default (not saved)
             );
             let burn_cb = create_checkbox(
                 MARGIN_LEFT,
-                15.0,
+                10.0,
                 CONTROL_WIDTH,
                 "Delete .rdp file after connection",
                 preferences.burn_after_reading,
             );
 
             // Add all controls to view
+            let _: () = msg_send![view, addSubview: res_label];
+            let _: () = msg_send![view, addSubview: res_dropdown];
             let _: () = msg_send![view, addSubview: clipboard_cb];
             let _: () = msg_send![view, addSubview: mapdrives_cb];
             let _: () = msg_send![view, addSubview: pwd_label];
@@ -298,6 +355,7 @@ mod macos {
 
             (
                 view,
+                res_dropdown,
                 clipboard_cb,
                 mapdrives_cb,
                 pwd_field,
@@ -328,7 +386,7 @@ mod macos {
             let alert = create_alert(rdp_name);
 
             // Step 4: Create all controls
-            let (view, clipboard_cb, mapdrives_cb, pwd_field, store_cb, burn_cb) =
+            let (view, res_dropdown, clipboard_cb, mapdrives_cb, pwd_field, store_cb, burn_cb) =
                 create_controls_view(cached_password, &config.preferences);
 
             // Step 5: Add controls to alert
@@ -359,7 +417,10 @@ mod macos {
                 return Ok(None); // Empty password = cancel
             }
 
+            let resolution = get_dropdown_selected_value(res_dropdown);
+
             Ok(Some(ConnectionConfig {
+                resolution,
                 clipboard: get_checkbox_state(clipboard_cb),
                 map_drives: get_checkbox_state(mapdrives_cb),
                 password,

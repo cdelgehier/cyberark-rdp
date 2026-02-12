@@ -62,8 +62,9 @@ fn build_connector_config(
     username: &str,
     password: &str,
 ) -> connector::Config {
-    let width = rdp_file.desktop_width().unwrap_or(config.default_width);
-    let height = rdp_file.desktop_height().unwrap_or(config.default_height);
+    // Use config resolution (user preference) instead of RDP file
+    let width = config.default_width;
+    let height = config.default_height;
 
     // PSM uses non-standard format "domain\user@uuid" which IronRDP's sspi library
     // doesn't support (rejects @ in username when domain is provided).
@@ -313,8 +314,9 @@ fn connect_via_gateway(
     )
     .context("RDP connect_finalize failed through gateway")?;
 
-    let width = rdp_file.desktop_width().unwrap_or(config.default_width);
-    let height = rdp_file.desktop_height().unwrap_or(config.default_height);
+    // Use config resolution (user preference) instead of RDP file
+    let width = config.default_width;
+    let height = config.default_height;
 
     tracing::info!("Connected via Gateway! Desktop: {}x{}", width, height);
 
@@ -425,8 +427,9 @@ pub fn connect(
     )
     .context("RDP connect_finalize (CredSSP/NLA) failed")?;
 
-    let width = rdp_file.desktop_width().unwrap_or(config.default_width);
-    let height = rdp_file.desktop_height().unwrap_or(config.default_height);
+    // Use config resolution (user preference) instead of RDP file
+    let width = config.default_width;
+    let height = config.default_height;
 
     tracing::info!("Connected! Desktop: {}x{}", width, height);
 

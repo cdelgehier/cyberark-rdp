@@ -57,7 +57,7 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     // Load config
-    let config = config::Config::load()?;
+    let mut config = config::Config::load()?;
     tracing::debug!("Config: {:?}", config);
 
     // Parse RDP file
@@ -82,12 +82,13 @@ fn main() -> Result<()> {
     };
 
     // Get password and config - either from CLI or dialog
-    let (password, _clipboard, _map_drives, burn_after_reading) = match cli.password {
+    let (password, resolution, _clipboard, _map_drives, burn_after_reading) = match cli.password {
         Some(p) => {
             // CLI password: load preferences from config
             let config = config::Config::load().unwrap_or_default();
             (
                 p,
+                config.preferences.resolution.clone(),
                 config.preferences.clipboard,
                 config.preferences.map_drives,
                 false,
@@ -101,6 +102,7 @@ fn main() -> Result<()> {
                 Some(cfg) => {
                     // Save user preferences
                     let mut config = config::Config::load().unwrap_or_default();
+                    config.preferences.resolution = cfg.resolution.clone();
                     config.preferences.clipboard = cfg.clipboard;
                     config.preferences.map_drives = cfg.map_drives;
                     config.preferences.burn_after_reading = cfg.burn_after_reading;
@@ -111,6 +113,7 @@ fn main() -> Result<()> {
 
                     (
                         cfg.password,
+                        cfg.resolution,
                         cfg.clipboard,
                         cfg.map_drives,
                         cfg.burn_after_reading,
@@ -123,6 +126,13 @@ fn main() -> Result<()> {
             }
         }
     };
+
+    // Parse and apply resolution from user preferences
+    if let Some((width, height)) = config::Config::parse_resolution(&resolution) {
+        config.default_width = width;
+        config.default_height = height;
+        tracing::info!("Using resolution: {}x{}", width, height);
+    }
 
     tracing::info!(
         "Connecting as {} to {}:{}",

@@ -82,7 +82,7 @@ fn default_height() -> u16 {
     1024
 }
 fn default_resolution() -> String {
-    "1920x1080".to_string()
+    "1440x900".to_string()
 }
 
 impl Default for Config {
