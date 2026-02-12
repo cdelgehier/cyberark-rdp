@@ -28,6 +28,7 @@ bytes = "1"
 # Window & rendering
 winit = "0.30"
 softbuffer = "0.4"
+image = "0.25"
 
 # TLS
 rustls = { version = "0.23", features = ["ring"] }
