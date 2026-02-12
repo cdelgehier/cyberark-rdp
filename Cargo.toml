@@ -1,3 +1,7 @@
+[workspace]
+members = [".", "xtask"]
+resolver = "2"
+
 [package]
 name = "cyberark-rdp"
 version = "0.1.0"
@@ -6,6 +10,9 @@ authors = ["Cédric Delgehier <cdelgehier@users.noreply.github.com>"]
 description = "Native macOS RDP client for CyberArk Privilege Cloud"
 license = "MIT"
 repository = "https://github.com/cdelgehier/cyberark-rdp"
+
+[lints.rust]
+unexpected_cfgs = "allow" # objc macros use cfg(cargo-clippy)
 
 [dependencies]
 # IronRDP core
@@ -21,6 +28,7 @@ bytes = "1"
 # Window & rendering
 winit = "0.30"
 softbuffer = "0.4"
+image = "0.25"
 
 # TLS
 rustls = { version = "0.23", features = ["ring"] }
@@ -35,6 +43,12 @@ directories = "5"
 rfd = "0.15"
 rpassword = "5"
 
+# macOS native UI (pure Rust, no C/Objective-C files)
+[target.'cfg(target_os = "macos")'.dependencies]
+cocoa = "0.26"
+objc = "0.2"
+objc-foundation = "0.1"
+
 # CLI
 clap = { version = "4", features = ["derive"] }
 
@@ -42,6 +56,7 @@ clap = { version = "4", features = ["derive"] }
 anyhow = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+chrono = "0.4"
 
 # Gateway
 uuid = { version = "1", features = ["v4"] }

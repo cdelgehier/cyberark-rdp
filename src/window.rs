@@ -6,10 +6,19 @@ use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::{ElementState, MouseButton, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
-use winit::keyboard::{KeyCode, PhysicalKey};
-use winit::window::{Window, WindowId};
+use winit::keyboard::{KeyCode, ModifiersState, PhysicalKey};
+use winit::window::{Fullscreen, Icon, Window, WindowId};
 
 use crate::connection::{DesktopSize, InputEvent};
+
+/// Load window icon from icon.png
+fn load_icon() -> Option<Icon> {
+    let icon_bytes = include_bytes!("../icon.png");
+    let img = image::load_from_memory(icon_bytes).ok()?;
+    let rgba = img.to_rgba8();
+    let (width, height) = rgba.dimensions();
+    Icon::from_rgba(rgba.into_raw(), width, height).ok()
+}
 
 /// The main application state
 struct RdpApp {
@@ -26,6 +35,14 @@ struct RdpApp {
     // Mouse state
     mouse_x: u16,
     mouse_y: u16,
+
+    // Keyboard state
+    modifiers: ModifiersState,
+
+    // Performance metrics
+    frame_count: u64,
+    last_fps_update: std::time::Instant,
+    fps: f64,
 }
 
 #[allow(dead_code)]
@@ -45,6 +62,10 @@ impl RdpApp {
             update_rx,
             mouse_x: 0,
             mouse_y: 0,
+            modifiers: ModifiersState::default(),
+            frame_count: 0,
+            last_fps_update: std::time::Instant::now(),
+            fps: 0.0,
         }
     }
 
@@ -290,10 +311,15 @@ impl ApplicationHandler for RdpApp {
             self.desktop_size.height as f64,
         );
 
-        let attrs = Window::default_attributes()
+        let mut attrs = Window::default_attributes()
             .with_title("CyberArk RDP")
             .with_inner_size(size)
-            .with_resizable(false); // Disable window resizing
+            .with_resizable(true); // Enable window resizing
+
+        // Load and set window icon
+        if let Some(icon) = load_icon() {
+            attrs = attrs.with_window_icon(Some(icon));
+        }
 
         let window = Arc::new(
             event_loop
@@ -330,6 +356,15 @@ impl ApplicationHandler for RdpApp {
                 event_loop.exit();
             }
 
+            WindowEvent::ModifiersChanged(new_modifiers) => {
+                self.modifiers = new_modifiers.state();
+            }
+
+            WindowEvent::Resized(new_size) => {
+                tracing::info!("Window resized to {}x{}", new_size.width, new_size.height);
+                // Surface will be resized in render()
+            }
+
             WindowEvent::RedrawRequested => {
                 // Check for framebuffer updates from RDP thread
                 let mut received_update = false;
@@ -359,10 +394,44 @@ impl ApplicationHandler for RdpApp {
                     );
                 }
                 self.render();
+
+                // Update FPS counter
+                self.frame_count += 1;
+                let elapsed = self.last_fps_update.elapsed();
+                if elapsed.as_secs_f64() >= 1.0 {
+                    self.fps = self.frame_count as f64 / elapsed.as_secs_f64();
+                    self.frame_count = 0;
+                    self.last_fps_update = std::time::Instant::now();
+
+                    // Update window title with FPS
+                    if let Some(window) = &self.window {
+                        window.set_title(&format!("CyberArk RDP - {:.1} FPS", self.fps));
+                    }
+                }
             }
 
             WindowEvent::KeyboardInput { event, .. } => {
                 use ironrdp_pdu::input::fast_path::{FastPathInputEvent, KeyboardFlags};
+
+                // Handle fullscreen toggle (F11 or Cmd+F on macOS)
+                if event.state == ElementState::Pressed {
+                    let is_f11 = matches!(event.physical_key, PhysicalKey::Code(KeyCode::F11));
+                    let is_cmd_f = matches!(event.physical_key, PhysicalKey::Code(KeyCode::KeyF))
+                        && self.modifiers.super_key();
+
+                    if is_f11 || is_cmd_f {
+                        if let Some(window) = &self.window {
+                            let is_fullscreen = window.fullscreen().is_some();
+                            window.set_fullscreen(if is_fullscreen {
+                                None
+                            } else {
+                                Some(Fullscreen::Borderless(None))
+                            });
+                            tracing::info!("Toggled fullscreen: {}", !is_fullscreen);
+                        }
+                        return; // Don't send to RDP
+                    }
+                }
 
                 // Map the key to a Windows scancode
                 if let Some(scancode) = map_key_to_scancode(&event.physical_key) {

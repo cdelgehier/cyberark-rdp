@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>CyberArk RDP</string>
+    <key>CFBundleDisplayName</key>
+    <string>CyberArk RDP</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.cdelgehier.cyberark-rdp</string>
+    <key>CFBundleVersion</key>
+    <string>1.0.0</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleSignature</key>
+    <string>????</string>
+    <key>CFBundleExecutable</key>
+    <string>cyberark-rdp</string>
+    <key>CFBundleIconFile</key>
+    <string>icon.icns</string>
+
+    <!-- Associate .rdp files -->
+    <key>CFBundleDocumentTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>Remote Desktop Connection</string>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+            <key>CFBundleTypeExtensions</key>
+            <array>
+                <string>rdp</string>
+            </array>
+            <key>CFBundleTypeIconFile</key>
+            <string>rdp-icon</string>
+            <key>LSHandlerRank</key>
+            <string>Default</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>com.microsoft.remote-desktop-connection</string>
+            </array>
+        </dict>
+    </array>
+
+    <!-- Declare we can handle RDP files -->
+    <key>UTImportedTypeDeclarations</key>
+    <array>
+        <dict>
+            <key>UTTypeIdentifier</key>
+            <string>com.microsoft.remote-desktop-connection</string>
+            <key>UTTypeDescription</key>
+            <string>Remote Desktop Connection File</string>
+            <key>UTTypeConformsTo</key>
+            <array>
+                <string>public.data</string>
+            </array>
+            <key>UTTypeTagSpecification</key>
+            <dict>
+                <key>public.filename-extension</key>
+                <array>
+                    <string>rdp</string>
+                </array>
+            </dict>
+        </dict>
+    </array>
+
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>LSMinimumSystemVersion</key>
+    <string>13.0</string>
+</dict>
+</plist>

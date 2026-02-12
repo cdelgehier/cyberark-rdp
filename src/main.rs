@@ -2,6 +2,7 @@ mod config;
 mod connection;
 mod rdp_parser;
 mod sia;
+mod ui;
 mod window;
 
 use anyhow::{Context, Result, bail};
@@ -39,29 +40,6 @@ struct Cli {
     dump_rdp: bool,
 }
 
-fn prompt_password(username: &str) -> Result<String> {
-    // Try native dialog first (works great on macOS)
-    let _ = rfd::MessageDialog::new()
-        .set_title("CyberArk RDP - Password")
-        .set_description(format!(
-            "Enter the RDP password found on CyberArk to log in as user {}.",
-            username
-        ))
-        .set_level(rfd::MessageLevel::Info)
-        .show();
-
-    // rfd doesn't have a password input dialog, fall back to terminal
-    // On macOS we could use osascript, or just use rpassword for terminal input
-    eprint!("Password for {}: ", username);
-    let password = rpassword::read_password().context("failed to read password")?;
-
-    if password.is_empty() {
-        bail!("empty password");
-    }
-
-    Ok(password)
-}
-
 fn main() -> Result<()> {
     // Initialize logging
     tracing_subscriber::fmt()
@@ -79,7 +57,7 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     // Load config
-    let config = config::Config::load()?;
+    let mut config = config::Config::load()?;
     tracing::debug!("Config: {:?}", config);
 
     // Parse RDP file
@@ -103,11 +81,58 @@ fn main() -> Result<()> {
         bail!("no username found in .rdp file and --username not provided");
     };
 
-    // Get password
-    let password = match cli.password {
-        Some(p) => p,
-        None => prompt_password(&username)?,
+    // Get password and config - either from CLI or dialog
+    let (password, resolution, _clipboard, _map_drives, burn_after_reading) = match cli.password {
+        Some(p) => {
+            // CLI password: load preferences from config
+            let config = config::Config::load().unwrap_or_default();
+            (
+                p,
+                config.preferences.resolution.clone(),
+                config.preferences.clipboard,
+                config.preferences.map_drives,
+                false,
+            )
+        }
+        None => {
+            // Show config dialog
+            let conn_config = ui::show_config_dialog(&cli.rdp_file, None)?;
+
+            match conn_config {
+                Some(cfg) => {
+                    // Save user preferences
+                    let mut config = config::Config::load().unwrap_or_default();
+                    config.preferences.resolution = cfg.resolution.clone();
+                    config.preferences.clipboard = cfg.clipboard;
+                    config.preferences.map_drives = cfg.map_drives;
+                    config.preferences.burn_after_reading = cfg.burn_after_reading;
+
+                    if let Err(e) = config.save() {
+                        tracing::warn!("Failed to save config: {}", e);
+                    }
+
+                    (
+                        cfg.password,
+                        cfg.resolution,
+                        cfg.clipboard,
+                        cfg.map_drives,
+                        cfg.burn_after_reading,
+                    )
+                }
+                None => {
+                    tracing::info!("User cancelled connection");
+                    return Ok(());
+                }
+            }
+        }
     };
+
+    // Parse and apply resolution from user preferences
+    if let Some((width, height)) = config::Config::parse_resolution(&resolution) {
+        config.default_width = width;
+        config.default_height = height;
+        tracing::info!("Using resolution: {}x{}", width, height);
+    }
 
     tracing::info!(
         "Connecting as {} to {}:{}",
@@ -160,6 +185,19 @@ fn main() -> Result<()> {
     // Wait for RDP thread to finish
     if let Err(e) = rdp_thread.join() {
         tracing::error!("Failed to join RDP thread: {:?}", e);
+    }
+
+    // Burn after reading: delete .rdp file if requested
+    if burn_after_reading {
+        match std::fs::remove_file(&cli.rdp_file) {
+            Ok(_) => {
+                tracing::info!("🔥 Deleted .rdp file: {}", cli.rdp_file.display());
+                println!("🔥 RDP file deleted (burn after reading)");
+            }
+            Err(e) => {
+                tracing::warn!("Failed to delete .rdp file: {}", e);
+            }
+        }
     }
 
     window_result
