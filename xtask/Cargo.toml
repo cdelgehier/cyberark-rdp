@@ -1,0 +1,13 @@
+[package]
+name = "xtask"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[[bin]]
+name = "xtask"
+test = false
+
+[dependencies]
+anyhow = "1"
+xshell = "0.2"
